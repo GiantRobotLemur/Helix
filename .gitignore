@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+# Custom file types
+*.log
+*.sys
+*.bin
+*.iso
+
+# Build Files
+CMakeUserPresets.json
+build/
