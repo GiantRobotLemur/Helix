@@ -37,6 +37,14 @@
 *.bin
 *.iso
 
+# Dev Environment Files
+.vscode
+.vscode
+.code
+
 # Build Files
+build/*
+bochsout.txt
+bx_enh_dbg.ini
 CMakeUserPresets.json
 build/
