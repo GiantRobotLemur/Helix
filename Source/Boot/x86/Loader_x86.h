@@ -24,7 +24,12 @@
 #define GdtBiosCode 0x38
 #define GdtCode32   0x40
 
-#define Loader16BssSize 2048 // 2K for the IDT.
+ // Allow 2K for the IDT after Loader16.sys.
+#define Loader16BssSize 2048
+
+ // TODO: Use the linker to calculate this.
+#define Loader32BssSize 2048
+
 #define HardwareIrqBase 240
 // #define Loader32Base 0x10000
 
@@ -115,9 +120,6 @@ struct Loader16Environment
     //! @brief The size of the 16-bit loader COM file.
     uint32_t Loader16Size;
 
-    //! @brief The size of the 32-bit loader EXE file.
-    uint32_t Loader32Size;
-
     //! @brief The offset into the 16-bit code of the interop entry point.
     uint16_t Interop16Offset;
 
@@ -128,27 +130,11 @@ struct Loader16Environment
     uint8_t BootDeviceId;
     uint8_t Reserved4[3];
 
-    //! @brief A pointer to the 32-bit ELF executable.
-    void *Loader32ExeFile;
+    //! @brief The count of entries in the MemMapEntries array.
+    uint32_t MemMapEntryCount;
 
-    //! @brief The size of the 32-bit loader program image in memory.
-    uint32_t Loader32ImageSize;
-    uint32_t Reserved5;
-
-    //! @brief The address of the start of the 32-bit loader image in memory.
-    void *Loader32ProcessImageBase; // +12
-
-    //! @brief The address of the end of the end of the 32-bit loader image.
-    void *Loader32ProcessImageEnd; // +16
-
-    //! @brief The entry point function into the 32-bit loader image.
-    void *Loader32EntryPoint; // +20
-
-    //! @brief A pointer to the start of the global descriptor table.
-    uint32_t *GlobalDescriptorTable; // +24
-
-    //! @brief A pointer to the start of the interrupt descriptor table.
-    uint32_t *InterruptDescriptorTable; // +32
+    //! @brief An array of MemMapEntry items describing the memory layout.
+    uint32_t MemMapEntries[5];
 };
 
 //! @brief The pointer to the 16-bit loader environment.

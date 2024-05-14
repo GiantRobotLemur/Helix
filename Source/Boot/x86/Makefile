@@ -11,7 +11,7 @@ ASMFLAGS := -D__ASM__
 CPPFLAGS := -I$(CURRENT_DIR)../Include
 CFLAGS := -ffreestanding -Wall -Wextra -Wpedantic -Wshadow
 CXXFLAGS := -ffreestanding -Wall -Wextra -Wpedantic -Wshadow
-LDXXFLAGS := -nostdlib -Wl,-Ttext=0x100000
+LDXXFLAGS := -nostdlib -Wl,-Ttext=0x100000,--oformat=binary
 
 ISO_IMAGE_NAME := $(OUT_DIR)/Helix.iso
 DOS_IMAGE_NAME := $(subst $(OUT_DIR),$(DOS_OUT_DIR),$(ISO_IMAGE_NAME))

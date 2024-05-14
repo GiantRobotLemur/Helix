@@ -27,17 +27,14 @@ Copyright:  This file is part of the Helix operating system project which is
     i.e. 640Kb - (EBDA 16-bit loader and BSS size). The 16-bit stack is allocated
     below that.
 
-    The 32-bit boot code is an i686 ELF binary file appended to the end of this
+    The 32-bit boot code is flat binary file appended to the end of this
     16-bit loader. It has should be linked with a fixed load address of
-    0x100000 (1 MB). The 16-bit code will create a process image from the file
-    contents so that it is in the correct position, and it can just be executed.
+    0x100000 (1 MB). The 16-bit code will copy the file contents so that it is
+    in the correct position, and it can just be executed from the beginning.
 
-    The 32-bit loader is unpacked from its original location into a process image
-    with at its embedded load address. A 32-bit stack is created below the
-    16-bit stack.
-
-    The 16-bit code switches to 16-bit protected mode using BIOS and then
-    branches to the 32-bit loader, moving to 32-bit protected mode.
+    A 32-bit stack is created below the 16-bit stack. The 16-bit code switches
+    to 16-bit protected mode using BIOS and then branches to the 32-bit loader,
+    moving to 32-bit protected mode.
 
     The 16-bit code also contains a real-mode far call/INT emulator which can be
     called from protected mode to use BIOS services. Color
@@ -102,6 +99,7 @@ Stack16Segment:
 
     jmp 1f
     .org 4
+    /* Segment Loader16.sys is moved to in high conventional memory */
 Code16Segment:
     .word 0
 
@@ -136,63 +134,35 @@ Loader16Size: /* uint32_t */
 .set Interop16Entry, Loader16Size + 4           /* uint16_t */
 
 /* The segment this code was originally loaded to. */
-.set OriginalLoadSegment, Interop16Entry + 2     /* uint16_t */
+.set OriginalLoadSegment, Loader16Size + 6      /* uint16_t */
 
 /* The INT 0x13 device used for booting */
-.set BootDeviceId, OriginalLoadSegment + 2      /* uint8_t */
+.set BootDeviceId, Loader16Size + 8             /* uint8_t */
+
+/* The count of entries in MemMapEntries */
+.set MemMapEntryCount, Loader16Size + 12        /* uint32_t */
+
+.set MemMapEntries, Loader16Size + 16           /* Array of MemMapEntry (20 bytes each) */
 
 /*
-    The 32-bit linear address of the start of the 32-bit ELF binary file
-    appended to this file detected by looking for the ElfMagic signature.
-*/
-.set Loader32ExeBase, Loader16Size + 16         /* uint32_t */
-
-/* The size of ELF program header table entries */
-.set ProgHeaderSize, Loader32ExeBase + 4        /* uint32_t */
-
-/* The count of ELF program header table entries */
-.set ProgHeaderCount, Loader32ExeBase + 8       /* uint32_t */
-
-/* The minimum address of any sections created from the 32-bit loader */
-.set Loader32ImageMinAddr, Loader32ExeBase + 12 /* uint32_t */
-
-/* The maximum address of any sections created from the 32-bit loader */
-.set Loader32ImageMaxAddr, Loader32ExeBase + 16 /* uint32_t */
-
-/* The virtual address of the entry point into the Loader32 ELF binary. */
-.set Loader32Entry, Loader32ExeBase + 20        /* uint32_t */
-
-/* The total size of the memory image created for the 32-bit loader */
-.set Loader32ImageSize, Loader32ExeBase + 24    /* uint32_t */
-
-/* The linear address of the start of the GDT */
-.set GdtStartAddr, Loader32ExeBase + 24         /* uint32_t */
-
-/* The linear address of the start of the IDT */
-.set IdtStartAddr, Loader32ExeBase + 28         /* uint32_t */
-
-.set MemMapEntryCount, Loader32ExeBase + 32     /* uint32_t */
-
-.set MemMapEntries, Loader32ExeBase + 38        /* Array of MemMapEntry (20 bytes each) */
-/*
-
 MemMapEntry structure:
     0x00 : uint64_t BaseAddress
     0x08 : uint64_t Size
     0x10 : uint8_t Type
 
+20 bytes total.
 */
 
 
-    /*
-    We don't know what offset we are at within the segment, so we
-    cannot assume that any LEA instructions will get the correct
-    offset of anything in this segment until we have fixed up
-    the segments to the paragraph starting at _start.
+/*
+We don't know what offset we are at within the segment, so we
+cannot assume that any LEA instructions will get the correct
+offset of anything in this segment until we have fixed up
+the segment registers to the paragraph starting at _start.
 
-    This does rather make the assumption that this code was
-    loaded on a 16-byte boundary, but if not, we're buggered anyway.
-   */
+This does rather make the assumption that this code was
+loaded on a 16-byte boundary, but if not, we're buggered anyway.
+*/
 1:
     cli
     movw %cs,%ax    /* Initialise segments and stack */
@@ -457,6 +427,22 @@ RelocatedLoader16Entry:
     movl %eax,8(%si)
     movl $MemType_UsableAfterBoot,16(%si)
     addw $MemMapEntry_Size,%si
+    incl MemMapEntryCount
+
+    /* Add an entry for the flat 32-bit binary at 1 MB */
+    movl $0x100000,(%si)
+    movl $0,4(%si)
+    xorl %edx,%edx              /* Calculate the size of Loader32.sys */
+    movl BootFileSize,%eax      /* Get the size of Boot.sys */
+    lea EndOfLoader16,%dx
+    subl %edx,%eax
+    addl $Loader32BssSize,%eax  /* Add BSS space for Loader32.sys */
+    addl $0xFFF,%eax            /* Round up to the nearest 4 KB */
+    andl $0xFFFFF000,%eax
+    movl %eax,8(%si)            /* Store the region size */
+    movl $0,12(%si)
+    movl $MemType_UsableAfterBoot,16(%si)   /* Set the region type */
+    addw $MemMapEntry_Size,%si  /* Increment the entry count */
     incl MemMapEntryCount
 
     /* Now try getting runtime memory information */
@@ -929,130 +915,6 @@ Print:
 
 .arch i686
 
-InitProtectedMode:
-    /* Update the segment registers with selectors to flush their attributes */
-    movw $GdtData16,%ax  /* Flush the selectors */
-    movw %ax,%ds         /* Set %ds, %fs and %gs as 16-bit data */
-    movw %ax,%fs
-    movw %ax,%gs
-    movw $GdtData32,%ax  /* Setup %es to access the 32-bit address space */
-    movw %ax,%es
-    movw $GdtStack16,%ax
-    movw %ax,%ss
-
-/*****************************************************************************/
-/* Create memory image of 32-bit ELF loader                                  */
-/*****************************************************************************/
-    xorl %ebx,%ebx
-    xorl %eax,%eax
-    leaw EndOfLoader16,%bx  /* Calculate the size of this 16-bit loader */
-    movw OriginalLoadSegment,%ax /* Get the original load segment */
-    shll $4,%eax            /* Convert the segment to a linear address */
-    addl %ebx,%eax          /* Calculate the position of the start of the
-                               32-bit portion of the loader. */
-
-/*
-There can be junk from the compilation/linking process between the end of
-this code and the start of the 32-bit ELF executable appended to the end.
-We get around this by scanning for the ELF signature at the start of the file
-and hoping it is on a useful address boundry.
-*/
-    movl %eax,%edi          /* Setup the base address of the EXE */
-    xorl %ecx,%ecx          /* Zero the counter */
-1:
-    movl %es:(%edi,%ecx,4),%eax   /* Get the first four bytes */
-    cmpl $ElfMagic,%eax     /* Test them against the ELF header signature */
-    je 1f                   /* We've found the start of the ELF file */
-    incl %ecx
-    cmpl $1024,%ecx         /* See if we have reached the limit. */
-    jge InvalidElfFailure
-    jmp 1b                  /* If not, try the next two bytes */
-
-1:
-    shll $2,%ecx            /* Calculate the actual address of the ELF start */
-    addl %ecx,%edi
-    movl %edi,Loader32ExeBase  /* Store the address for later use */
-
-    movw %es:4(%edi),%ax    /* Get the 2 bytes after the header. */
-    cmpw $0x0101,%ax        /* Ensure the file is 32-bit Little Endian */
-    jne InvalidElfFailure
-
-    movl %es:16(%edi),%eax  /* Get the file type and machine. */
-    cmpl $0x30002,%eax      /* Ensure it is an i386 executable */
-    jne InvalidElfFailure
-
-    movl %es:24(%edi),%eax  /* Get the entry point virtual address */
-    movl %eax,Loader32Entry /* Copy it for later use. */
-
-    movl %es:28(%edi),%eax  /* Get the offset to the program header */
-    xorl %edx,%edx
-    xorl %ecx,%ecx
-    movw %es:42(%edi),%dx   /* Get the size of program header entries */
-    movw %es:44(%edi),%cx   /* Get the count of program header entries */
-    movl %edx,ProgHeaderSize
-    movl %ecx,ProgHeaderCount
-
-    addl %eax,%edi           /* Get the start of the program header table */
-
-/*
-We need to calculate the size of the loaded process image by taking the minimum
-and maximum of loaded sections.
-*/
-    xorl %ebx,%ebx           /* Set the maximum address of loaded sections */
-    movl %ebx,Loader32ImageMaxAddr
-    decl %ebx                /* Set the minimum address of loaded sections */
-    movl %ebx,Loader32ImageMinAddr
-
-1:
-    movl %es:8(%edi),%eax    /* Get the virtual address of the segment */
-    movl %es:20(%edi),%ebx   /* Get the size of the segment in memory */
-    movl %ebx,%edx           /* Calculate the end address */
-    addl %eax,%edx
-    cmpl Loader32ImageMinAddr,%eax
-    jae 2f
-    movl %eax,Loader32ImageMinAddr  /* The new segment address is lower. */
-2:
-    cmpl Loader32ImageMaxAddr,%edx
-    jb 2f
-    movl %edx,Loader32ImageMaxAddr  /* The new segment end is higher */
-
-2:
-    cmpl $0,%ebx             /* Ensure the in-memory size is non-zero */
-    je 3f
-    call ZeroMemory32        /* Clear the segment memory */
-
-    movl %es:16(%edi),%ebx   /* Get the count of segment bytes in the file */
-    cmpl $0,%ebx
-    je 3f
-    pushl %ecx                  /* Preserve the table entry counter */
-    movl %ebx,%ecx              /* Put the count of bytes to copy in ECX */
-    movl %es:4(%edi),%ebx       /* Get the file offset of the bytes to copy */
-    addl Loader32ExeBase,%ebx   /* Calculate the source address */
-    call CopyMemory32           /* Copy the segment data to the correct address */
-
-    popl %ecx                   /* Restore the table entry counter */
-3:
-    addl ProgHeaderSize,%edi    /* Move on to the next segment. */
-    loop 1b
-
-/*
-If we get here, all program headers have been processed, the ELF segments have
-been copied to their appropriate location in virtual memory and any additional
-areas have been zeroed.
-*/
-    movl Loader32ImageMaxAddr,%edx  /* Get the maximum segment address */
-    subl Loader32ImageMinAddr,%edx  /* Calculate the loaded size of the EXE */
-    movl %edx,Loader32ImageSize     /* Store the process image size */
-    jmp Enter32BitLoader
-
-InvalidElfFailure:
-    leaw InvalidExeMessage,%ax
-    call Print32
-    cli
-1:
-    jmp 1b
-
-
 /* void ZeroMemory32(EAX=DestVirtAddr, EBX=ByteCount)
    Zeros a specified number of bytes in the 32-bit address space.
    DestVirtAddr must be 32-bit aligned.
@@ -1158,32 +1020,45 @@ screen and interpret non-visible characters.
     popl %eax
     ret
 
+InitProtectedMode:
+    /* Update the segment registers with selectors to flush their attributes */
+    movw $GdtData16,%ax  /* Flush the selectors */
+    movw %ax,%ds         /* Set %ds, %fs and %gs as 16-bit data */
+    movw %ax,%fs
+    movw %ax,%gs
+    movw $GdtData32,%ax  /* Setup %es to access the 32-bit address space */
+    movw %ax,%es
+    movw $GdtStack16,%ax
+    movw %ax,%ss
+
+/*****************************************************************************/
+/* Copy the 32-bit flat binary to the 1 MB mark                              */
+/*****************************************************************************/
+    xorl %ebx,%ebx
+    xorl %ecx,%ecx
+    leaw EndOfLoader16,%cx  /* Calculate the size of this 16-bit loader */
+    movw OriginalLoadSegment,%bx /* Get the original load segment */
+    shll $4,%ebx            /* Convert the segment to a linear address */
+
+    addl %ecx,%ebx          /* Calculate the position of the start of the
+                               32-bit portion of the loader. */
+    movl BootFileSize,%eax  /* Get the total size of Boot.sys */
+    subl %ecx,%eax          /* Calculate the size of Loader32.sys */
+    movl %eax,%ecx
+    movl $0x100000,%eax     /* Set the linear address to copy Loader32.sys to */
+
+    call CopyMemory32
+
 /*****************************************************************************/
 /* Enter the 32-bit loader                                                   */
 /*****************************************************************************/
+    /* Switch to the 32-bit data segments and stack */
 Enter32BitLoader:
-    movl Loader32Entry,%eax /* Load the address of the entry point */
-    movl %eax,%ecx          /* Store the entry point address */
-
-    /* Store some useful variables to pass to the 32-bit loader */
-    xorl %eax,%eax
-    movw Code16Segment,%ax
-    shll $4,%eax
-
-    /* Store the linear GDT and IDT base addresses */
-    /* Note the value of GdtStart and IdtStart are relative to the start of */
-    /* The 16-bit segment, because that's all the linker knows. */
-    leal GdtStart(%eax),%edx
-    leal IdtStart(%eax),%ebx
-    movl %edx,GdtStartAddr
-    movl %ebx,IdtStartAddr
-
     xorl %eax,%eax
     movw Stack16Segment,%ax /* Calculate the location of the 16-bit stack */
     shll $4,%eax
-    subl $4,%eax        /* Find the top of the 32-bit stack just below */
+    subl $4,%eax            /* Find the top of the 32-bit stack just below */
 
-    /* Switch to the 32-bit data segments and stack */
     cli
     movw $GdtData32,%dx
     movw %dx,%ds
@@ -1200,7 +1075,7 @@ Enter32BitLoader:
     shll $4,%eax
 
     pushl $GdtCode32            /* Push the far address of the entry point */
-    pushl %ecx
+    pushl $0x100000
     data32 lret                 /* Jump the the adress if the entry point */
 
     .arch i686
