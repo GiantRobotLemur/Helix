@@ -34,7 +34,7 @@ $(OUT_DIR)/IsoImage/Boot.sys : $(OUT_DIR)/Loader16.sys $(OUT_DIR)/Loader32.sys
 $(OUT_DIR)/Loader16.sys : Loader16.S Loader_x86.h
 	@echo Assembling $< ...
 	@mkdir -p $(dir $@)
-	@$(AS) $(ASMFLAGS) -nostdlib \
+	@$(AS) $(ASMFLAGS) -DNEEDS_IO_SEGMENT -nostdlib \
 		-Wl,--oformat=binary,-Ttext=0x0000 -o $@ $<
 
 # Assemble the 32-bit entry point to the C++ portion of the loader.

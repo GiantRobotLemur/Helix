@@ -91,17 +91,25 @@ After relocation:
 /* Entry and position independant initialization                             */
 /*****************************************************************************/
 _start:
-Stack16Segment:
+
+/* The segment address of the 16-bit stack. */
+.set Stack16Segment, _start         /* uint16_t */
+
+/* Segment Loader16.sys is moved to in high conventional memory */
+.set Code16Segment, _start + 2      /* uint16_t */
+
+/* A 64K-aligned segment used for real-mode I/O operations. */
+.set IOSegment, _start + 4          /* uint16_t */
+
+/* The length of the IO segment in 16-byte paragraphs */
+.set IOSegmentLength, _start + 6    /* uint16_t */
+
     /*
     The first two bytes contain a jump instruction but will
     be overwritten with the 16-bit value of the 16-bit stack segment.
     */
 
     jmp 1f
-    .org 4
-    /* Segment Loader16.sys is moved to in high conventional memory */
-Code16Segment:
-    .word 0
 
    .org 8
    /* The following 56 bytes are filled in by genisoimage */
@@ -139,10 +147,14 @@ Loader16Size: /* uint32_t */
 /* The INT 0x13 device used for booting */
 .set BootDeviceId, Loader16Size + 8             /* uint8_t */
 
-/* The count of entries in MemMapEntries */
-.set MemMapEntryCount, Loader16Size + 12        /* uint32_t */
+/* @brief The parameters of the boot drive as returned by INT 13h Fn=4Ah */
+.set BootDriveParams, Loader16Size + 12         /* uint8_t[32] */
 
-.set MemMapEntries, Loader16Size + 16           /* Array of MemMapEntry (20 bytes each) */
+/* The count of entries in MemMapEntries */
+.set MemMapEntryCount, BootDriveParams + 32     /* uint32_t */
+
+/* Array of MemMapEntry (20 bytes each) */
+.set MemMapEntries, MemMapEntryCount + 4        /* struct MemMapEntry[] */
 
 /*
 MemMapEntry structure:
@@ -383,6 +395,16 @@ RelocateLoader:
     pushw $RelocatedLoader16Entry
     lret                    /* Jump to the copy of this code in its new location */
 
+ErrorEBiosNotSupported:
+    .ascii "EBIOS disk functions not supported."
+    .byte 13,10,0
+
+ErrorCannotReadBootDrive:
+    .ascii "Failed to read boot drive parameters."
+    .byte 13,10,0
+
+    .align 4
+
 RelocatedLoader16Entry:
     movw %cs,%ax            /* Set-up the local data segment */
     movw %ds,%bx            /* Store the old 16-bit base segment for later */
@@ -398,10 +420,38 @@ RelocatedLoader16Entry:
 
 
 /*****************************************************************************/
-/* Probe the memory map using BIOS services before switching to              */
-/*   protected mode                                                          */
+/* Probe boot drive parameters                                               */
 /*****************************************************************************/
 
+    movb BootDeviceId,%dl       /* Get the boot drive ID */
+    movw $0x55AA,%bx            /* Set signature */
+    xorl %eax,%eax
+    movb $0x41,%ah
+    int $0x13                   /* Check EBIOS functions available */
+    jc EBiosNotSupported
+    cmpw $0xAA55,%bx
+    jne EBiosNotSupported
+    jmp QueryDriveParams
+
+EBiosNotSupported:
+    leaw ErrorEBiosNotSupported,%ax
+    call Print
+    jmp Halt386
+
+QueryDriveParams:
+    leaw BootDriveParams,%si    /* Get a pointer to the block to fill in */
+    movw $32,(%si)              /* Set the maximum block size */
+    movb $0x48,%ah              /* Set the function code */
+    int $0x13                   /* Call EBIOS to get the drive specifications */
+    jnc ProbeMemMap
+    leaw ErrorCannotReadBootDrive,%ax   /* Display an error message */
+    call Print
+    jmp Halt386
+
+/*****************************************************************************/
+/* Probe the memory map using BIOS services                                  */
+/*****************************************************************************/
+ProbeMemMap:
     leaw EndOfLoader16,%di  /* Use memory at the end of the loader as scratch space */
     leaw MemMapEntries,%si  /* Get the address of the MemMapEntries array */
 
@@ -409,8 +459,20 @@ RelocatedLoader16Entry:
     movl $2,MemMapEntryCount    /* Set the count of entries to 2 to begin with */
 
     /* Add a memory map entry for the IVT and BIOS data areas */
+    /* Possibly round up to 64KB to create an area which can be used for I/O */
     movl $0,(%si)               /* Create an entry for IVT and the BIOS data area */
-    movw $0x600,8(%si)
+    movl $0,4(%si)
+
+#ifdef NEEDS_IO_SEGMENT
+    movl $0x10000,8(%si)        /* Round up to 64KB to create area for I/O */
+    movw $0x60,IOSegment        /* Define the start of the I/O segment */
+    movw $0x1000 - 0x60,IOSegmentLength   /* Store the length in paragraphs */
+#else
+    movl $0x1000,8(%si)         /* Round up to a page boundary */
+    movw $0,IOSegment           /* Ensure the I/O segment is marked as unset */
+    movw $0,IOSegmentLength
+#endif
+    movl $0,12(%si)
     movl $MemType_UsableAfterBoot,16(%si)
     addw $MemMapEntry_Size,%si
     incl MemMapEntryCount

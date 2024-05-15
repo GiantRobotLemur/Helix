@@ -13,6 +13,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 #include <stddef.h>
 
+#include "Loader.hpp"
+
 ///////////////////////////////////////////////////////////////////////////////
 // Macro Definitions
 ///////////////////////////////////////////////////////////////////////////////
@@ -35,11 +37,17 @@ namespace {
 ///////////////////////////////////////////////////////////////////////////////
 // Stand-Alone Function Definitions
 ///////////////////////////////////////////////////////////////////////////////
-extern "C" void main(void)
+extern "C" void main(BootInfo *boot)
 {
     constexpr size_t BufferPitch = 80 * 2;
     char *videoBuffer = reinterpret_cast<char *>(0xB8000);
     const char message[] = "Hello World!";
+
+
+    // Read from the boot device.
+    boot->DeviceInfo->ReadBootSectors(reinterpret_cast<void *>(0x60000),
+                                      boot->DeviceInfo->BootSector,
+                                      1);
 
     // Move down a line.
     videoBuffer += BufferPitch;

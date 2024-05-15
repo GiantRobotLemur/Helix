@@ -41,13 +41,24 @@
 //#define SystemPageDirSize (1 << SystemPageDirSizePow2)
 #define Stack16Size 4096
 #define Stack32Size 4096
-#define Interop16EntryOffset 68
 #define MinRamInMb 8
+
+#define Interop16Entry_Offset 68
+#define BootDeviceId_Offset (64 + 8)
+#define DriveParams_Offset (64 + 12)
+#define IOSegment_Offset 4
+#define IOLength_Offset 6
+#define DriveTotalSectors_Offset (DriveParams_Offset + 16)
+#define DriveSectorSize_Offset (DriveParams_Offset + 24)
+#define MemMapEntryCount_Offset (DriveParams_Offset + 32)
+#define MemMapEntries_Offset (DriveParams_Offset + 36)
 
 #define MemMapEntry_Size        20  /* sizeof(MemMapEntry) */
 #define MemType_UsableRAM       1   /* See MemType::UsableRAM in Loader.h */
 #define MemType_Reserved        2   /* See MemType::Reserved in Loader.h */
 #define MemType_UsableAfterBoot 128 /* See MemType::UsableAfterBoot in Loader.h */
+
+#define BootDeviceType_Cdrom 3
 
 #define MinXmsInKb ((MinRamInMb - 1) * 1024)
 #define MinRamInMbText MakeText(MinRamInMb)
@@ -70,8 +81,8 @@ struct Interop16Regs
     uint32_t ESI;   // +16
     uint32_t EDI;   // +20
     uint32_t EBP;   // +24
-    uint16_t DS;    // +26
-    uint16_t ES;    // +28
+    uint16_t DS;    // +28
+    uint16_t ES;    // +30
     uint32_t EFlags;// +32
     // 36-bytes total.
 };
@@ -96,10 +107,13 @@ struct Loader16Environment
 {
     //! @brief The segment address of the 16-bit stack.
     uint16_t Stack16Segment;
-    uint16_t Reserved1;
 
     //! @brief The segment address of the 16-bit code and data.
     uint16_t Loader16Segment;
+
+    //! @brief A 64K-aligned segment used for real-mode I/O operations.
+    uint16_t IOSegment;
+
     uint16_t Reserved2;
 
     // Fields added by genisoimage using the -boot-info-table.
@@ -129,6 +143,9 @@ struct Loader16Environment
     //! @brief The INT13 ID of the boot device.
     uint8_t BootDeviceId;
     uint8_t Reserved4[3];
+
+    //! @brief The parameters of the boot drive as returned by INT 13h Fn=4Ah
+    uint32_t BootDriveParams[8];
 
     //! @brief The count of entries in the MemMapEntries array.
     uint32_t MemMapEntryCount;
