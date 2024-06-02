@@ -1,0 +1,32 @@
+﻿{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "test-windows",
+            "displayName": "Test Windows",
+            "description": "Google tests for utility functions under Windows",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/../../../build-x64-debug/${presetName}",
+            "installDir": "${sourceDir}/../../../install-x64-debug/${presetName}",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "toolset": {
+                "value": "host=x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "cl.exe",
+                "CMAKE_CXX_COMPILER": "cl.exe",
+                "CMAKE_PREFIX_PATH": "W:/dev/3rdParty/googletest-1.12.1",
+                "CMAKE_BUILD_TYPE": "Debug"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        }
+    ]
+}

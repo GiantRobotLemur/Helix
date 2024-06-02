@@ -86,7 +86,7 @@ struct MemMapEntry
     //! @brief The classification of the region.
     MemType Type;
 
-    uint8_t Padding[sizeof(uint32_t) - 1];
+    uint8_t Padding[sizeof(uint32_t) - sizeof(MemType)];
 };
 
 //! @brief A pointer to a function which reads raw blocks from the boot device.

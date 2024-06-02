@@ -1,0 +1,72 @@
+//! @file BootUtils/Test_TargetTools.hpp
+//! @brief The declaration of tools used for unit testing code elements as if
+//! they were running on the target platform.
+//! @author GiantRobotLemur@na-se.co.uk
+//! @date 2024
+//! @copyright This file is part of the Helix operating system project which is
+//! released under GPL 3 license. See LICENSE file at the repository root or go
+//! to https://github.com/GiantRobotLemur/Helix for full license details.
+////////////////////////////////////////////////////////////////////////////////
+
+#ifndef __HELIX_BOOT_TEST_TARGET_TOOLS_HPP__
+#define __HELIX_BOOT_TEST_TARGET_TOOLS_HPP__
+
+////////////////////////////////////////////////////////////////////////////////
+// Dependent Header Files
+////////////////////////////////////////////////////////////////////////////////
+#include <cstdint>
+
+#include <gtest/gtest.h>
+
+////////////////////////////////////////////////////////////////////////////////
+// Macro Definitions
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+// Data Type Declarations
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+// Class Declarations
+////////////////////////////////////////////////////////////////////////////////
+//! @brief An RAII object which sets the simulated memory map for its lifetime.
+class TargetMemoryMap
+{
+public:
+    // Construction/Destruction
+    TargetMemoryMap();
+    TargetMemoryMap(size_t sizeInMb);
+    ~TargetMemoryMap();
+
+    // Accessors
+    size_t getSize() const;
+    void *getMemoryMap() const;
+
+    // Operations
+    void initialise(size_t sizeInMb);
+    void reset();
+
+    void fill(size_t startOffset, size_t byteCount, uint8_t pattern);
+    ::testing::AssertionResult expectMemoryContents(size_t startOffset,
+                                                    size_t byteCount,
+                                                    uint8_t expectedPattern) const;
+
+    ::testing::AssertionResult expectMemoryModified(size_t startOffset,
+                                                    size_t byteCount,
+                                                    uint8_t expectedPattern) const;
+private:
+    // Internal Fields
+    size_t _memoryMapSize;
+    void *_memoryMap;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Function Declarations
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+// Templates
+////////////////////////////////////////////////////////////////////////////////
+
+#endif // Header guard
+////////////////////////////////////////////////////////////////////////////////
